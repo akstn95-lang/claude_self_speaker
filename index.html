@@ -1498,9 +1498,17 @@ ${rows}
 
 // ══════════════════════════════════════
 //  GAS 호출 / Mock
+//
+//  [중요] GitHub Pages처럼 GAS 웹앱 바깥(외부 도메인)에서 이 HTML을 띄울 때는
+//  google.script.run 을 쓸 수 없습니다 (GAS가 직접 서빙하는 페이지에서만 동작).
+//  대신 GAS 웹앱을 doPost API로 호출하는 fetch() 방식을 사용합니다.
+//  GAS_WEB_APP_URL 을 새로 배포한 주소로 정확히 바꿔주세요.
 // ══════════════════════════════════════
+const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyY3Tzngm_1g8K0AYY3ajZsX5eX-kaU6MQ-CvME-5WCkdaFETR1VRIKMs12JztqkkEPWw/exec";
+
 async function gasCall(action, payload) {
-  if (typeof google !== 'undefined' && google.script?.run) {
+  // GAS가 직접 서빙하는 페이지에서 열렸다면 google.script.run 사용 (있는 경우 우선)
+  if (typeof google !== 'undefined' && google.script && google.script.run) {
     return new Promise((resolve, reject) => {
       google.script.run
         .withSuccessHandler(r => resolve(JSON.parse(r)))
@@ -1508,6 +1516,23 @@ async function gasCall(action, payload) {
         .dispatch(action, payload);
     });
   }
+
+  // GitHub Pages 등 외부 도메인에서는 fetch로 GAS 웹앱 doPost를 직접 호출
+  if (GAS_WEB_APP_URL && GAS_WEB_APP_URL.indexOf('AKfycb') !== -1) {
+    try {
+      const res = await fetch(GAS_WEB_APP_URL, {
+        method : 'POST',
+        headers: { 'Content-Type': 'text/plain' }, // GAS doPost가 text/plain을 기대 (CORS preflight 회피)
+        body   : JSON.stringify({ action, payload }),
+      });
+      const json = await res.json();
+      return json;
+    } catch (e) {
+      throw new Error('GAS 서버 연결 실패: ' + e.message);
+    }
+  }
+
+  // GAS_WEB_APP_URL이 설정되지 않은 경우에만 로컬 테스트용 Mock으로 폴백
   return mockGasCall(action, payload);
 }
 
