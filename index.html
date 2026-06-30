@@ -925,8 +925,13 @@ function startRec() {
     S.recognition = null;
   }
 
-  S._final              = '';
-  S._currentSessionFinal = '';
+  // 이미 인식된 텍스트가 있는 상태(직전 세션이 멈춘 뒤 버튼을 다시 누른 경우)라면
+  // 기존 텍스트를 유지한 채 이어서 듣는다. 완전히 새로 시작하려면 '다시' 버튼 사용.
+  const isResume = (S.recText || '').trim().length > 0;
+  if (!isResume) {
+    S._final              = '';
+    S._currentSessionFinal = '';
+  }
   S._gotAnyResult       = false;
   S._recEnded           = false;   // onend 발생 여부 추적 (타임아웃 중복 방지)
   S._userStopped        = false;   // 사용자가 명시적으로 멈췄는지 여부 (자동 재시작 판단용)
@@ -935,13 +940,24 @@ function startRec() {
 
   S.isRecording   = true;
   S._recStopping  = false;
-  S.recText = '';
-  document.getElementById('rec-transcript').style.display = 'none';
-  document.getElementById('rec-transcript').textContent = '';
+
+  if (isResume) {
+    // 이어서 듣기: 기존 텍스트를 유지하고 transcript도 그대로 표시
+    S.recText = S._final.trim();
+    const rt = document.getElementById('rec-transcript');
+    rt.style.display = S.recText ? 'block' : 'none';
+    rt.textContent = S.recText;
+  } else {
+    S.recText = '';
+    document.getElementById('rec-transcript').style.display = 'none';
+    document.getElementById('rec-transcript').textContent = '';
+  }
   document.getElementById('voice-send-btn').disabled = true;
   document.getElementById('edit-rec-btn').disabled = true;
   setRecBtn('recording');
-  document.getElementById('rec-status').textContent = '듣고 있습니다… 말씀이 끝나면 버튼을 다시 눌러 주세요';
+  document.getElementById('rec-status').textContent = isResume
+    ? '이어서 듣고 있습니다… 말씀이 끝나면 버튼을 다시 눌러 주세요'
+    : '듣고 있습니다… 말씀이 끝나면 버튼을 다시 눌러 주세요';
   document.getElementById('voice-bars').classList.add('active');
   document.querySelectorAll('.vbar').forEach((b, i) => {
     b.classList.add('anim');
@@ -1005,18 +1021,12 @@ function createAndStartRecognition() {
       S._currentSessionFinal = '';
     }
 
-    // 사용자가 직접 멈추지 않았는데 onend가 왔다면, 모바일 엔진의
-    // 조기 종료(no-speech 타임아웃 등)로 간주하고 자동으로 이어서 재시작
-    if (S.isRecording && !S._userStopped) {
-      try {
-        createAndStartRecognition();
-        S.recognition.start();
-      } catch(e) {
-        S._recEnded = true;
-        finishRecUI();
-      }
-      return;
-    }
+    // [v1.2] 자동 재시작은 짧은 침묵마다 세션이 쪼개지면서 문장이 토막나
+    // "네네네 저는네 저는네" 처럼 중복된 단어 조각이 쌓이는 부작용이 있었음.
+    // continuous:true 자체가 짧은 침묵은 버텨주므로, onend가 왔다는 것은
+    // 엔진이 충분히 긴 침묵(또는 사용자의 말 끝남)을 감지했다는 뜻으로 보고
+    // 더 이상 자동 재시작하지 않음. 답변이 끊겼다면 버튼을 다시 눌러
+    // 이어서 녹음하면 됨 (S._final에 이미 누적되어 있으므로 이어붙기 가능).
     S._recEnded = true;
     finishRecUI();
   };
