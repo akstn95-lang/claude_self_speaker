@@ -925,11 +925,11 @@ function startRec() {
     S.recognition = null;
   }
 
-  S._final          = '';
-  S._gotAnyResult   = false;
-  S._recEnded       = false;   // onend 발생 여부 추적 (타임아웃 중복 방지)
-  S._userStopped    = false;   // 사용자가 명시적으로 멈췄는지 여부 (자동 재시작 판단용)
-  S._lastFinalChunk = '';      // 직전에 추가한 final 조각 (중복 비교용)
+  S._final              = '';
+  S._currentSessionFinal = '';
+  S._gotAnyResult       = false;
+  S._recEnded           = false;   // onend 발생 여부 추적 (타임아웃 중복 방지)
+  S._userStopped        = false;   // 사용자가 명시적으로 멈췄는지 여부 (자동 재시작 판단용)
 
   createAndStartRecognition();
 
@@ -960,6 +960,10 @@ function createAndStartRecognition() {
   recog.interimResults = true;
   recog.maxAlternatives = 1;
 
+  // 이번 인식 세션에서 누적된 final 텍스트 (세션마다 리셋되는 resultIndex에 대응)
+  let sessionFinal = '';
+  let sessionLastChunk = '';
+
   recog.onresult = e => {
     let interim = '';
     let newFinal = '';
@@ -970,19 +974,34 @@ function createAndStartRecognition() {
 
     if (newFinal) {
       const trimmed = newFinal.trim();
-      // 직전에 추가한 final 조각과 동일하면 중복으로 간주하고 건너뜀
-      if (trimmed && trimmed !== S._lastFinalChunk) {
-        S._final += newFinal;
-        S._lastFinalChunk = trimmed;
+      if (trimmed) {
+        if (!sessionLastChunk) {
+          sessionFinal = newFinal;
+          sessionLastChunk = trimmed;
+        } else if (trimmed === sessionLastChunk) {
+          // 동일 조각 재전송 → 무시
+        } else if (trimmed.startsWith(sessionLastChunk)) {
+          // 누적된 전체 문장을 다시 보내는 엔진 → 교체(누적하지 않음)
+          sessionFinal = newFinal;
+          sessionLastChunk = trimmed;
+        } else if (sessionLastChunk.startsWith(trimmed)) {
+          // 짧아진 재전송 → 무시
+        } else {
+          // 완전히 새로운 구간 → 이어 붙임
+          sessionFinal += newFinal;
+          sessionLastChunk = trimmed;
+        }
       }
     }
     S._gotAnyResult = true;
 
-    S.recText = (S._final + ' ' + interim).trim();
+    // 이전 세션들에서 확정된 텍스트(S._final) + 이번 세션 텍스트 + 미확정 구간
+    S.recText = (S._final + sessionFinal + ' ' + interim).trim();
+    S._currentSessionFinal = sessionFinal;   // onend에서 S._final에 합칠 때 사용
+
     const rt = document.getElementById('rec-transcript');
     rt.style.display = 'block';
     rt.textContent = S.recText;
-    // 결과가 잡히는 즉시 전송 버튼 활성화 (final/interim 구분 없이)
     document.getElementById('voice-send-btn').disabled = S.recText.length < 1;
     document.getElementById('edit-rec-btn').disabled = S.recText.length < 1;
   };
@@ -1002,6 +1021,12 @@ function createAndStartRecognition() {
   };
 
   recog.onend = () => {
+    // 이번 세션에서 확정된 텍스트를 전체 누적본에 합침
+    if (S._currentSessionFinal) {
+      S._final += S._currentSessionFinal;
+      S._currentSessionFinal = '';
+    }
+
     // 사용자가 직접 멈추지 않았는데 onend가 왔다면, 모바일 엔진의
     // 조기 종료(no-speech 타임아웃 등)로 간주하고 자동으로 이어서 재시작
     if (S.isRecording && !S._userStopped) {
@@ -1085,7 +1110,7 @@ function resetRec() {
   S._userStopped = true;
   S.recText = '';
   S._final = '';
-  S._lastFinalChunk = '';
+  S._currentSessionFinal = '';
   document.getElementById('rec-transcript').style.display = 'none';
   document.getElementById('rec-transcript').textContent = '';
   document.getElementById('voice-send-btn').disabled = true;
