@@ -481,6 +481,8 @@ textarea{resize:vertical;min-height:120px;line-height:1.65;font-size:16px}
     <div class="rs-card"><div class="rs-num" id="rs-date">—</div><div class="rs-lbl">면접 일시</div></div>
   </div>
 
+  <div id="final-report-box" class="card" style="display:none"></div>
+
   <div style="width:100%;display:flex;flex-direction:column;gap:12px" id="result-list"></div>
 
   <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:8px">
@@ -737,27 +739,54 @@ async function startSession() {
 
 function buildSystemPrompt() {
   const levelMap = {
-    gentle: '친절하고 격려하는 톤',
-    normal: '진지하고 전문적인 실전 면접 톤',
-    strict: '날카롭고 심층적인 톤, 답변의 논리적 허점을 파고드는 꼬리질문 적극 활용',
+    gentle: '친절하고 격려하는 톤. Level 1(사실 확인) 위주로 진행하고 Level 2는 가볍게만 시도.',
+    normal: '진지하고 전문적인 실전 면접 톤. Level 1→2→3을 순차적으로 진행.',
+    strict: '날카롭고 심층적인 톤. Level 2, 3 비중을 높이고 답변의 논리적 허점을 적극적으로 파고듦.',
   };
   const lang = S.lang === 'en'
     ? 'Conduct the entire interview in English.'
     : '한국어로 진행.';
 
   // 소스 자료는 3000자로 제한해 응답 속도 향상 (핵심 정보는 보통 앞부분에 집중됨)
-  return `대한민국 ${S.category} 대입 면접관 역할. 지원자: ${S.name}.
+  return `당신은 2028학년도 서울대학교 역량평가 면접관입니다. 지원자: ${S.name} (${S.category}).
 
-[소스자료]
+[소스자료 - 학생부/자소서]
 ${S.srcText.slice(0, 3000)}
+
+[면접의 본질]
+이 면접은 정답을 맞히는 시험이 아니라, 학생부에 기록된 활동이 진짜 본인의 사고 과정에서 나온 것인지, 그리고 그 사고가 얼마나 깊은지를 확인하는 자리입니다. 표면적 사실 나열이 아니라 "왜 그 호기심에서 출발했는지", "탐구 과정에서 새롭게 알게 된 점", "한계를 어떻게 인식했는지"를 끌어내야 합니다.
+
+[질문 설계 원칙 - 3단계 심화 모델]
+하나의 활동을 골라 다음 순서로 점진적으로 심화하십시오. 한 단계에서 충분한 답이 나오면 다음 단계로, 답이 부실하면 같은 단계에서 더 캐묻습니다.
+
+1단계 Foundational (사실 확인): "이 활동을 왜, 어떻게 했나요?" / "어떤 역할을 맡았나요?"
+2단계 Deepening (심화 탐구): "어떤 어려움이 있었고 어떻게 해결했나요?" / "활동을 통해 생각이나 관점이 어떻게 변했나요?"
+3단계 Expansion (확장 적용): "이 경험의 교훈을 다른 문제에 적용한다면?" / "본인이 내린 결론의 한계는 무엇인가요?"
+
+[탐침질문 기법 - 답변이 부실하거나 더 깊이 파고들 때 활용]
+- 설명요구: "그 근거를 좀 더 구체적으로 설명해 주시겠어요?"
+- 조건 바꾸기: "만약 조건이 ~로 바뀐다면 결과는 어떻게 달라질까요?"
+- 오류 발견 유도: "이 설명에 한계나 빈틈은 없을까요?"
+- 일반화: "이 결론을 다른 상황에도 일반화할 수 있을까요?"
+- 현실 연결: "실생활에서는 어떤 사례로 나타날까요?"
+- 경험 질문: "이와 관련해 직접 겪은 경험이 있나요?"
+
+[평가 역량 - 질문할 때마다 1~2개 역량을 염두에 두되 직접 언급하지 않음]
+종합적 사고(분석·추론) / 창의적 사고(융합·발상) / 지식탐구(깊이 있는 이해) / 협력적 소통(타인 관점 존중·표현) / 공동체(개방성·사회적 가치관) / 자기관리(자기주도성·성찰)
+
+[좋은 답변과 부족한 답변의 차이 - 면접관으로서 판단 기준]
+부족한 답변: 단순 현상 나열, "보람을 느꼈다" 같은 추상적 소감, 암기한 듯한 정형화된 문구
+좋은 답변: 구체적 의문 제기("왜 다르게 작동할까?"), 본인의 결론에 대한 한계 인식, 새로운 관점으로의 확장
+답변이 단순 나열형이면 탐침질문으로 더 깊이 끌어내고, 이미 비판적 사고가 드러나면 다음 단계나 다른 활동으로 넘어가십시오.
 
 [규칙]
 - ${levelMap[S.level] || levelMap.normal}
 - 한 번에 질문 1개만, 2~4문장 이내로 간결하게
-- 답변 들은 후 짧은 반응 + 꼬리질문 또는 다음 질문
+- 답변을 들은 후: 짧은 반응 → (필요시 탐침질문으로 같은 단계 심화) 또는 (다음 단계로 진행) 또는 (다른 활동으로 전환)
+- 학생부의 여러 활동 중 가장 구체적이고 깊이 탐구 가능한 1~2개를 선별해 집중하십시오. 모든 활동을 얕게 훑지 마십시오.
 - 면접 종료 시: "오늘 면접은 여기까지입니다. 수고하셨습니다."
 - ${lang}
-- 면접관 역할 유지, 불필요한 부연설명 금지`;
+- 면접관 역할 유지, 불필요한 부연설명 금지, 정답을 알려주거나 평가 점수를 면접 중에 말하지 않음`;
 }
 
 // ══════════════════════════════════════
@@ -852,12 +881,36 @@ function submitAnswer(text) {
   // 사용자 말풍선
   appendBubble('user', escHtml(text), null, false);
 
-  // turns 저장
-  const qPair = { q: S.lastQ, a: text };
+  // turns 저장 (평가 결과는 비동기로 채워짐)
+  const qPair = { q: S.lastQ, a: text, evaluating: true };
   S.turns.push(qPair);
 
-  // Claude 전송
+  // Claude 전송 (면접 흐름은 평가를 기다리지 않고 바로 진행)
   sendToClaude(text);
+
+  // 답변 평가는 백그라운드에서 별도 호출 (면접 진행 속도에 영향 없음)
+  evaluateTurn(qPair);
+}
+
+// 답변 직후 즉석 평가 — A/B 비교 기준(나열형/확장형)으로 판단
+async function evaluateTurn(qPair) {
+  try {
+    const res = await gasCall('evaluateAnswer', {
+      question: qPair.q,
+      answer  : qPair.a,
+      category: S.category,
+    });
+    if (res.ok) {
+      qPair.evalType      = res.data.type || '';
+      qPair.strength      = res.data.strength || '';
+      qPair.improve       = res.data.improve || '';
+      qPair.competency    = res.data.primary_competency || '';
+    }
+  } catch (e) {
+    // 평가 실패는 면접 진행에 영향을 주지 않도록 조용히 무시
+  } finally {
+    qPair.evaluating = false;
+  }
 }
 
 // ══════════════════════════════════════
@@ -1254,7 +1307,7 @@ function updateProgress() {
 // ══════════════════════════════════════
 //  결과 화면
 // ══════════════════════════════════════
-function goToResult() {
+async function goToResult() {
   const qa = S.turns;
   const totalWords = qa.reduce((s, t) => s + (t.a || '').split(/\s+/).length, 0);
   const date = new Date().toLocaleDateString('ko-KR', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
@@ -1263,22 +1316,94 @@ function goToResult() {
   document.getElementById('rs-words').textContent = totalWords + '단어';
   document.getElementById('rs-date').textContent  = date;
 
+  goTo('sc-result');
+
+  // 아직 평가 중인 답변이 있으면 최대 5초까지 대기 (면접 흐름과 별개로 백그라운드 진행됨)
+  showLoading('답변 평가를 정리하고 있습니다…');
+  const waitStart = Date.now();
+  while (qa.some(t => t.evaluating) && Date.now() - waitStart < 5000) {
+    await new Promise(r => setTimeout(r, 300));
+  }
+  hideLoading();
+
+  renderResultList(qa);
+
+  // 종합 리포트 (역량 기반) — 답변이 1개 이상 있을 때만 호출
+  if (qa.length > 0) {
+    fetchFinalReport(qa);
+  }
+}
+
+function evalTypeBadge(type) {
+  if (type === '확장형') return { label: '비판적 확장형', cls: 'badge-green' };
+  if (type === '나열형') return { label: '단순 나열형', cls: 'badge-red' };
+  return null;
+}
+
+function renderResultList(qa) {
   const list = document.getElementById('result-list');
   list.innerHTML = '';
   qa.forEach((t, i) => {
     const div = document.createElement('div');
     div.className = 'r-item';
+
+    const badge = evalTypeBadge(t.evalType);
+    const badgeHtml = badge
+      ? `<span class="badge ${badge.cls}" style="margin-left:6px">${badge.label}</span>`
+      : '';
+    const competencyHtml = t.competency
+      ? `<span class="badge badge-teal" style="margin-left:6px">${escHtml(t.competency)}</span>`
+      : '';
+
+    let feedbackHtml = '';
+    if (t.strength || t.improve) {
+      feedbackHtml = `
+        <div class="r-fb" style="display:flex;flex-direction:column;gap:4px">
+          ${t.strength ? `<span>✔ ${escHtml(t.strength)}</span>` : ''}
+          ${t.improve  ? `<span style="color:#fca5a5">△ ${escHtml(t.improve)}</span>` : ''}
+        </div>`;
+    }
+
     div.innerHTML = `
-      <div style="display:flex;align-items:center;gap:8px">
-        <span class="badge badge-blue">Q${i+1}</span>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span class="badge badge-blue">Q${i+1}</span>${badgeHtml}${competencyHtml}
       </div>
       <div class="r-q">${escHtml(t.q || '—')}</div>
       <div class="r-a">${escHtml(t.a || '(답변 없음)')}</div>
+      ${feedbackHtml}
     `;
     list.appendChild(div);
   });
+}
 
-  goTo('sc-result');
+// 면접 종료 후 6개 역량 기반 종합 리포트 호출
+async function fetchFinalReport(qa) {
+  const reportBox = document.getElementById('final-report-box');
+  reportBox.style.display = 'block';
+  reportBox.innerHTML = `<div class="typing-dots"><span></span><span></span><span></span></div>`;
+
+  try {
+    const res = await gasCall('generateFinalReport', {
+      turns   : qa.map(t => ({ q: t.q, a: t.a })),
+      name    : S.name,
+      category: S.category,
+    });
+    if (!res.ok) throw new Error(res.error);
+
+    const { top_competencies, overall_comment, next_step } = res.data;
+    const compBadges = (top_competencies || [])
+      .map(c => `<span class="badge badge-teal" style="margin-right:6px">${escHtml(c)}</span>`)
+      .join('');
+
+    reportBox.innerHTML = `
+      <h3 style="margin:0 0 10px;font-size:1rem;color:var(--sky)">📈 역량 기반 종합 리포트</h3>
+      <div style="margin-bottom:10px">${compBadges || '<span style="color:var(--gray2);font-size:.85rem">두드러진 역량 식별 안 됨</span>'}</div>
+      <p style="font-size:.88rem;color:var(--gray1);line-height:1.7;margin:0 0 10px">${escHtml(overall_comment || '')}</p>
+      <p style="font-size:.85rem;color:var(--gray2);line-height:1.6;margin:0">💡 다음 연습 방향: ${escHtml(next_step || '')}</p>
+    `;
+  } catch (e) {
+    reportBox.innerHTML = `<p style="font-size:.85rem;color:var(--gray2)">⚠️ 종합 리포트를 불러오지 못했습니다.</p>`;
+  }
 }
 
 // ══════════════════════════════════════
@@ -1378,6 +1503,39 @@ async function mockGasCall(action, payload) {
     ];
     const idx = isStart ? 0 : Math.min(S.turnCount, replies.length - 1);
     return { ok: true, data: { reply: replies[idx] } };
+  }
+
+  if (action === 'evaluateAnswer') {
+    const ans = (payload.answer || '');
+    // 답변에 "왜", "의문", "한계" 등 비판적 사고 키워드가 있으면 확장형으로 판정 (mock 휴리스틱)
+    const isExpansive = /왜|의문|한계|비교|다르게|적용한다면|확장/.test(ans);
+    return {
+      ok: true,
+      data: isExpansive
+        ? {
+            type: '확장형',
+            strength: '본인의 의문을 구체적으로 제시하고 새로운 관점으로 확장했습니다.',
+            improve: '근거가 되는 구체적 수치나 사례를 한두 개 더 들면 설득력이 높아집니다.',
+            primary_competency: '창의적 사고',
+          }
+        : {
+            type: '나열형',
+            strength: '활동 경험을 사실대로 분명하게 전달했습니다.',
+            improve: '단순 사실 나열을 넘어 "왜 그런 결과가 나왔는지" 본인의 해석을 덧붙여보세요.',
+            primary_competency: '지식탐구',
+          },
+    };
+  }
+
+  if (action === 'generateFinalReport') {
+    return {
+      ok: true,
+      data: {
+        top_competencies: ['지식탐구', '자기관리'],
+        overall_comment: `${S.name} 지원자는 활동 경험을 구체적으로 전달하는 능력이 돋보였습니다. 다만 일부 답변에서 사실 나열에 그치는 경향이 있어, 본인만의 해석과 의문 제기를 더한다면 한층 설득력 있는 답변이 될 것입니다.`,
+        next_step: '하나의 활동을 정해 "왜?"라는 질문을 3단계로 깊게 파고드는 연습을 해보세요.',
+      },
+    };
   }
 
   if (action === 'saveSession') {
