@@ -6,7 +6,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>AI 면접 훈련 앱 v1.0</title>
+<title>AI 면접 훈련 앱 v1.1</title>
 <style>
 /* ── 디자인 토큰 ─────────────────────────── */
 :root {
@@ -46,7 +46,7 @@ h1{font-size:1.9rem;font-weight:800;letter-spacing:-.4px}
 h2{font-size:1.25rem;font-weight:700}
 h3{font-size:1rem;font-weight:600}
 
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:12px 22px;border-radius:8px;border:none;cursor:pointer;font-size:.9rem;font-weight:600;font-family:var(--font);transition:all .18s;white-space:nowrap;min-height:44px;-webkit-user-select:none;user-select:none}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:12px 22px;border-radius:8px;border:none;cursor:pointer;font-size:.9rem;font-weight:600;font-family:var(--font);transition:all .18s;white-space:nowrap;min-height:44px;-webkit-user-select:none;user-select:none;touch-action:manipulation}
 .btn-primary{background:var(--blue);color:#fff}  .btn-primary:hover{background:#1d4ed8;transform:translateY(-1px)}
 .btn-teal   {background:var(--teal);color:#fff}   .btn-teal:hover{background:#0f766e;transform:translateY(-1px)}
 .btn-gold   {background:var(--gold);color:#000}   .btn-gold:hover{background:#d97706;transform:translateY(-1px)}
@@ -120,7 +120,7 @@ textarea{resize:vertical;min-height:120px;line-height:1.65;font-size:16px}
 .toggle-label{font-size:.82rem;font-weight:600}
 
 /* 채팅창 */
-.chat-window{width:100%;background:rgba(0,0,0,.25);border:1px solid var(--border);border-radius:var(--r);height:420px;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px;scroll-behavior:smooth}
+.chat-window{width:100%;background:rgba(0,0,0,.25);border:1px solid var(--border);border-radius:var(--r);height:420px;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px;scroll-behavior:smooth;-webkit-overflow-scrolling:touch}
 .chat-window::-webkit-scrollbar{width:4px}
 .chat-window::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:99px}
 
@@ -243,7 +243,6 @@ textarea{resize:vertical;min-height:120px;line-height:1.65;font-size:16px}
 
   /* 카드 패딩 축소 */
   .card{padding:16px}
-  .api-steps li{font-size:.82rem}
 
   /* 결과지 버튼 줄바꿈 */
   .result-stats{grid-template-columns:repeat(3,1fr)}
@@ -281,7 +280,7 @@ textarea{resize:vertical;min-height:120px;line-height:1.65;font-size:16px}
 <div class="screen active" id="sc-lobby">
   <div style="text-align:center">
     <div class="logo-ring">🎤</div>
-    <h1 style="margin-top:16px">AI 면접 훈련 <span style="font-size:.5em;color:var(--gray2);font-weight:600;vertical-align:middle">v1.0</span></h1>
+    <h1 style="margin-top:16px">AI 면접 훈련 <span style="font-size:.5em;color:var(--gray2);font-weight:600;vertical-align:middle">v1.1</span></h1>
     <div class="tagline">Claude 면접관과 실전 대화 · 음성 모드 지원</div>
   </div>
 
@@ -511,7 +510,7 @@ const S = {
   recognition: null,
   recText    : '',
 
-  history    : [],   // Gemini 대화 히스토리
+  history    : [],   // Claude 대화 히스토리
   turns      : [],   // {q, a} 저장용
   turnCount  : 0,
   lastQ      : '',   // 마지막 면접관 질문 (TTS 재생용)
@@ -890,6 +889,12 @@ function setVoiceUI(on) {
 
 // ══════════════════════════════════════
 //  녹음 컨트롤
+//  [v1.1 수정사항]
+//  1) 모바일 브라우저의 조기 종료(no-speech 타임아웃 등) 대응:
+//     사용자가 직접 멈추지 않은 상태(onend)가 오면 자동으로
+//     새 인식 세션을 만들어 이어붙임 → 답변 도중 끊기지 않음
+//  2) 중복 입력 방지: 직전에 추가한 final 조각과 동일한 내용이
+//     다시 들어오면 누적하지 않고 건너뜀
 // ══════════════════════════════════════
 function toggleRec() {
   if (S._recStopping) return;       // "마무리 중" 상태에서 중복 클릭 무시
@@ -920,59 +925,13 @@ function startRec() {
     S.recognition = null;
   }
 
-  const recog = new SR();
-  S.recognition = recog;
-  recog.lang = S.lang === 'en' ? 'en-US' : 'ko-KR';
-  recog.continuous = true;
-  recog.interimResults = true;
-  recog.maxAlternatives = 1;
+  S._final          = '';
+  S._gotAnyResult   = false;
+  S._recEnded       = false;   // onend 발생 여부 추적 (타임아웃 중복 방지)
+  S._userStopped    = false;   // 사용자가 명시적으로 멈췄는지 여부 (자동 재시작 판단용)
+  S._lastFinalChunk = '';      // 직전에 추가한 final 조각 (중복 비교용)
 
-  S._final   = '';
-  S._gotAnyResult = false;
-  S._recEnded = false;   // onend 발생 여부 추적 (타임아웃 중복 방지)
-
-  recog.onresult = e => {
-    let interim = '';
-    let newFinal = '';
-    for (let i = e.resultIndex; i < e.results.length; i++) {
-      if (e.results[i].isFinal) newFinal += e.results[i][0].transcript;
-      else interim += e.results[i][0].transcript;
-    }
-    if (newFinal) S._final += newFinal;
-    S._gotAnyResult = true;
-
-    S.recText = (S._final + ' ' + interim).trim();
-    const rt = document.getElementById('rec-transcript');
-    rt.style.display = 'block';
-    rt.textContent = S.recText;
-    // 결과가 잡히는 즉시 전송 버튼 활성화 (final/interim 구분 없이)
-    document.getElementById('voice-send-btn').disabled = S.recText.length < 1;
-    document.getElementById('edit-rec-btn').disabled = S.recText.length < 1;
-  };
-
-  recog.onerror = e => {
-    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
-      toast('🚫 마이크 권한이 거부되었습니다. 브라우저 설정에서 마이크 권한을 허용해 주세요.');
-    } else if (e.error === 'no-speech') {
-      // 무음은 흔히 발생 — 조용히 무시 (onend에서 최종 처리)
-    } else if (e.error === 'network') {
-      toast('🌐 네트워크 오류로 음성 인식이 끊겼습니다. 직접 입력을 이용해 주세요.');
-    } else if (e.error !== 'aborted') {
-      toast('⚠️ 음성 인식 오류(' + e.error + '). 직접 입력을 이용해 주세요.');
-    }
-  };
-
-  recog.onend = () => {
-    S._recEnded = true;
-    finishRecUI();
-  };
-
-  try {
-    recog.start();
-  } catch(e) {
-    toast('⚠️ 음성 인식을 시작할 수 없습니다. 직접 입력을 이용해 주세요.');
-    return;
-  }
+  createAndStartRecognition();
 
   S.isRecording   = true;
   S._recStopping  = false;
@@ -989,6 +948,81 @@ function startRec() {
     b.style.animationDuration = (.35 + i * .04) + 's';
     b.style.animationDelay   = (i * .05) + 's';
   });
+}
+
+// 인식 세션 생성 및 시작 (조기 종료 시 재호출되어 이어붙이는 역할도 겸함)
+function createAndStartRecognition() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const recog = new SR();
+  S.recognition = recog;
+  recog.lang = S.lang === 'en' ? 'en-US' : 'ko-KR';
+  recog.continuous = true;
+  recog.interimResults = true;
+  recog.maxAlternatives = 1;
+
+  recog.onresult = e => {
+    let interim = '';
+    let newFinal = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      if (e.results[i].isFinal) newFinal += e.results[i][0].transcript;
+      else interim += e.results[i][0].transcript;
+    }
+
+    if (newFinal) {
+      const trimmed = newFinal.trim();
+      // 직전에 추가한 final 조각과 동일하면 중복으로 간주하고 건너뜀
+      if (trimmed && trimmed !== S._lastFinalChunk) {
+        S._final += newFinal;
+        S._lastFinalChunk = trimmed;
+      }
+    }
+    S._gotAnyResult = true;
+
+    S.recText = (S._final + ' ' + interim).trim();
+    const rt = document.getElementById('rec-transcript');
+    rt.style.display = 'block';
+    rt.textContent = S.recText;
+    // 결과가 잡히는 즉시 전송 버튼 활성화 (final/interim 구분 없이)
+    document.getElementById('voice-send-btn').disabled = S.recText.length < 1;
+    document.getElementById('edit-rec-btn').disabled = S.recText.length < 1;
+  };
+
+  recog.onerror = e => {
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+      toast('🚫 마이크 권한이 거부되었습니다. 브라우저 설정에서 마이크 권한을 허용해 주세요.');
+      S._userStopped = true;
+    } else if (e.error === 'no-speech') {
+      // 무음은 흔히 발생 — 조용히 무시. onend에서 자동 재시작으로 이어짐
+    } else if (e.error === 'network') {
+      toast('🌐 네트워크 오류로 음성 인식이 끊겼습니다. 직접 입력을 이용해 주세요.');
+      S._userStopped = true;
+    } else if (e.error !== 'aborted') {
+      toast('⚠️ 음성 인식 오류(' + e.error + '). 직접 입력을 이용해 주세요.');
+    }
+  };
+
+  recog.onend = () => {
+    // 사용자가 직접 멈추지 않았는데 onend가 왔다면, 모바일 엔진의
+    // 조기 종료(no-speech 타임아웃 등)로 간주하고 자동으로 이어서 재시작
+    if (S.isRecording && !S._userStopped) {
+      try {
+        createAndStartRecognition();
+        S.recognition.start();
+      } catch(e) {
+        S._recEnded = true;
+        finishRecUI();
+      }
+      return;
+    }
+    S._recEnded = true;
+    finishRecUI();
+  };
+
+  try {
+    recog.start();
+  } catch(e) {
+    toast('⚠️ 음성 인식을 시작할 수 없습니다. 직접 입력을 이용해 주세요.');
+  }
 }
 
 // 녹음 종료 후 UI 상태를 정리하는 공통 함수
@@ -1017,6 +1051,7 @@ function stopRec() {
   if (!S.isRecording) return;
   S.isRecording  = false;
   S._recStopping = true;
+  S._userStopped = true;   // 사용자가 직접 멈춘 것임을 표시 → 자동 재시작 방지
   document.getElementById('rec-status').textContent = '음성 인식 마무리 중…';
   setRecBtn('ready');   // 버튼은 즉시 다시 누를 수 있는 모양으로 복귀
 
@@ -1047,8 +1082,10 @@ function resetRec() {
   S.isRecording  = false;
   S._recStopping = false;
   S._recEnded    = true;
+  S._userStopped = true;
   S.recText = '';
   S._final = '';
+  S._lastFinalChunk = '';
   document.getElementById('rec-transcript').style.display = 'none';
   document.getElementById('rec-transcript').textContent = '';
   document.getElementById('voice-send-btn').disabled = true;
