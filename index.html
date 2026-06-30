@@ -332,7 +332,10 @@ textarea{resize:vertical;min-height:120px;line-height:1.65;font-size:16px}
     </div>
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
       <span id="src-len" style="font-size:.8rem;color:var(--gray2)">0자</span>
-      <button class="btn btn-red btn-sm" onclick="confirmClearAll()">🆕 새로 입력</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-teal btn-sm" onclick="manualSaveDraft()">💾 저장</button>
+        <button class="btn btn-red btn-sm" onclick="confirmClearAll()">🆕 새로 입력</button>
+      </div>
     </div>
   </div>
 
@@ -613,7 +616,28 @@ function autoSaveDraft() {
       savedAt  : new Date().toISOString(),
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(draft));
-  } catch(e) { /* localStorage 사용 불가 시 조용히 무시 */ }
+    return true;
+  } catch(e) {
+    return false; /* localStorage 사용 불가 또는 용량 초과 */
+  }
+}
+
+// 저장 버튼 클릭 시 호출 — 자동 저장과 동일한 로직이지만 결과를 토스트로 명확히 알림
+// (도메인이 다른 환경, 예: GAS 웹앱 ↔ GitHub Pages 에서는 localStorage가 서로 공유되지 않으므로
+//  사용자가 각 환경에서 한 번씩 직접 저장해야 함)
+function manualSaveDraft() {
+  const text = document.getElementById('src-text').value.trim();
+  if (!text) {
+    toast('⚠️ 저장할 학생부/자소서 내용을 먼저 입력해 주세요.');
+    return;
+  }
+  const success = autoSaveDraft();
+  if (success) {
+    document.getElementById('autosave-badge').style.display = 'block';
+    toast('💾 이 브라우저에 저장되었습니다. (다른 사이트 주소에서는 다시 저장해야 합니다)');
+  } else {
+    toast('❌ 저장에 실패했습니다. 브라우저 저장 공간을 확인해 주세요.');
+  }
 }
 
 function loadDraft() {
