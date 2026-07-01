@@ -378,22 +378,13 @@ textarea{resize:vertical;min-height:120px;line-height:1.65;font-size:16px}
   <!-- 면접 스타일 -->
   <div class="card">
     <div class="sec-hd"><span class="sec-ico">🎯</span><h3>면접 스타일</h3></div>
-    <div class="form-row">
-      <div class="form-group">
-        <label>면접 강도</label>
-        <select id="int-level">
-          <option value="gentle">🌱 친절 (처음 연습)</option>
-          <option value="normal" selected>⚖️ 보통 (실전 대비)</option>
-          <option value="strict">🔥 엄격 (최고 수준)</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>언어</label>
-        <select id="int-lang">
-          <option value="ko" selected>🇰🇷 한국어</option>
-          <option value="en">🇺🇸 영어 (영어면접)</option>
-        </select>
-      </div>
+    <div class="form-group">
+      <label>면접 강도</label>
+      <select id="int-level">
+        <option value="gentle">🌱 친절 (처음 연습)</option>
+        <option value="normal" selected>⚖️ 보통 (실전 대비)</option>
+        <option value="strict">🔥 엄격 (최고 수준)</option>
+      </select>
     </div>
   </div>
 
@@ -513,7 +504,7 @@ const S = {
   category   : '',
   srcText    : '',
   level      : 'normal',
-  lang       : 'ko',
+  lang       : 'ko',   // 한국어 면접만 지원 (영어 옵션 제거됨)
   ttsRate    : 0.95,
   ttsVoice   : '',
   prepTime   : 5,
@@ -582,7 +573,7 @@ function speak(text, onEnd) {
   speechSynthesis.cancel();
   const cleanText = cleanForTTS(text);
   const utt = new SpeechSynthesisUtterance(cleanText);
-  utt.lang  = S.lang === 'en' ? 'en-US' : 'ko-KR';
+  utt.lang  = 'ko-KR';
   utt.rate  = S.ttsRate;
   const voices = speechSynthesis.getVoices();
   const v = voices.find(x => x.name === S.ttsVoice);
@@ -617,7 +608,6 @@ function autoSaveDraft() {
       category : document.getElementById('lb-cat').value,
       srcText  : document.getElementById('src-text').value,
       level    : document.getElementById('int-level').value,
-      lang     : document.getElementById('int-lang').value,
       ttsRate  : document.getElementById('tts-rate').value,
       ttsVoice : document.getElementById('tts-voice').value,
       prepTime : document.getElementById('prep-time').value,
@@ -658,7 +648,6 @@ function loadDraft() {
     if (d.category) document.getElementById('lb-cat').value  = d.category;
     if (d.srcText)  document.getElementById('src-text').value = d.srcText;
     if (d.level)    document.getElementById('int-level').value = d.level;
-    if (d.lang)     document.getElementById('int-lang').value  = d.lang;
     if (d.ttsRate)  {
       document.getElementById('tts-rate').value = d.ttsRate;
       document.getElementById('tts-rv').textContent = parseFloat(d.ttsRate).toFixed(2) + '×';
@@ -686,7 +675,6 @@ function confirmClearAll() {
   document.getElementById('lb-cat').value  = '이공·공학 계열';
   document.getElementById('src-text').value = '';
   document.getElementById('int-level').value = 'normal';
-  document.getElementById('int-lang').value  = 'ko';
   document.getElementById('tts-rate').value  = .95;
   document.getElementById('tts-rv').textContent = '0.95×';
   document.getElementById('prep-time').value = 5;
@@ -781,7 +769,7 @@ function updateSrcLen() {
 document.addEventListener('DOMContentLoaded', () => {
   // 자동 저장 대상 필드들에 입력 이벤트 등록 (디바운스 적용)
   let saveTimer = null;
-  const fieldIds = ['lb-name','lb-cat','src-text','int-level','int-lang','tts-rate','tts-voice','prep-time'];
+  const fieldIds = ['lb-name','lb-cat','src-text','int-level','tts-rate','tts-voice','prep-time'];
   fieldIds.forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
@@ -814,7 +802,6 @@ async function startSession() {
   S.category = document.getElementById('lb-cat').value;
   S.srcText  = src;
   S.level    = document.getElementById('int-level').value;
-  S.lang     = document.getElementById('int-lang').value;
   S.ttsRate  = parseFloat(document.getElementById('tts-rate').value);
   S.ttsVoice = document.getElementById('tts-voice').value;
   S.prepTime = parseInt(document.getElementById('prep-time').value);
@@ -847,9 +834,6 @@ function buildSystemPrompt() {
     normal: '진지하고 전문적인 실전 면접 톤. Level 1→2→3을 순차적으로 진행.',
     strict: '날카롭고 심층적인 톤. Level 2, 3 비중을 높이고 답변의 논리적 허점을 적극적으로 파고듦.',
   };
-  const lang = S.lang === 'en'
-    ? 'Conduct the entire interview in English.'
-    : '한국어로 진행.';
 
   // 소스 자료는 3000자로 제한해 응답 속도 향상 (핵심 정보는 보통 앞부분에 집중됨)
   return `당신은 2028학년도 서울대학교 역량평가 면접관입니다. 지원자: ${S.name} (${S.category}).
@@ -889,7 +873,7 @@ ${S.srcText.slice(0, 3000)}
 - 답변을 들은 후: 짧은 반응 → (필요시 탐침질문으로 같은 단계 심화) 또는 (다음 단계로 진행) 또는 (다른 활동으로 전환)
 - 학생부의 여러 활동 중 가장 구체적이고 깊이 탐구 가능한 1~2개를 선별해 집중하십시오. 모든 활동을 얕게 훑지 마십시오.
 - 면접 종료 시: "오늘 면접은 여기까지입니다. 수고하셨습니다."
-- ${lang}
+- 한국어로 진행.
 - 면접관 역할 유지, 불필요한 부연설명 금지, 정답을 알려주거나 평가 점수를 면접 중에 말하지 않음`;
 }
 
@@ -1128,7 +1112,7 @@ function createAndStartRecognition() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   const recog = new SR();
   S.recognition = recog;
-  recog.lang = S.lang === 'en' ? 'en-US' : 'ko-KR';
+  recog.lang = 'ko-KR';
   recog.continuous = true;
   recog.interimResults = false;   // 중간(미확정) 결과를 끔 — 중복 누적의 근본 원인 제거
   recog.maxAlternatives = 1;
