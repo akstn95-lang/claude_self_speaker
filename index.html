@@ -6,7 +6,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>AI 면접 훈련 앱 v1.2</title>
+<title>인터View (interView) v2.0</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 /* ── 디자인 토큰 ─────────────────────────── */
@@ -281,8 +281,8 @@ textarea{resize:vertical;min-height:120px;line-height:1.65;font-size:16px}
 <div class="screen active" id="sc-lobby">
   <div style="text-align:center">
     <div class="logo-ring">🎤</div>
-    <h1 style="margin-top:16px">AI 면접 훈련 <span style="font-size:.5em;color:var(--gray2);font-weight:600;vertical-align:middle">v1.1</span></h1>
-    <div class="tagline">Claude 면접관과 실전 대화 · 음성 모드 지원</div>
+    <h1 style="margin-top:16px">inter<span style="color:var(--sky)">View</span> <span style="font-size:.5em;color:var(--gray2);font-weight:600;vertical-align:middle">v2.0</span></h1>
+    <div class="tagline">Claude 면접관과 실전 대화 · 생기부 기반 맞춤 질문</div>
   </div>
 
   <div class="feat-grid">
@@ -307,6 +307,10 @@ textarea{resize:vertical;min-height:120px;line-height:1.65;font-size:16px}
           <option value="일반">일반 (계열 무관)</option>
         </select>
       </div>
+    </div>
+    <div class="form-group" style="text-align:left;margin-bottom:18px">
+      <label>결과지 전송 이메일 <span style="font-weight:400;color:var(--gray3)">(선택)</span></label>
+      <input id="lb-email" type="email" placeholder="example@school.kr" style="text-align:left">
     </div>
     <button class="btn btn-gold btn-lg" onclick="goTo('sc-setup')">⚙️ 설정으로 →</button>
   </div>
@@ -368,6 +372,13 @@ textarea{resize:vertical;min-height:120px;line-height:1.65;font-size:16px}
       <div class="range-row">
         <input type="range" id="prep-time" min="3" max="30" step="1" value="5" oninput="document.getElementById('prep-rv').textContent=this.value+'초'">
         <div class="rv" id="prep-rv">5초</div>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>답변 녹음 시간 <span style="font-size:.78rem;font-weight:400;color:var(--gray3)">(시간 초과 시 자동 종료 · 이어서 녹음 가능)</span></label>
+      <div class="range-row">
+        <input type="range" id="rec-limit" min="5" max="120" step="5" value="10" oninput="document.getElementById('rec-limit-rv').textContent=this.value+'초'">
+        <div class="rv" id="rec-limit-rv">10초</div>
       </div>
     </div>
     <div style="display:flex;gap:8px">
@@ -490,6 +501,7 @@ textarea{resize:vertical;min-height:120px;line-height:1.65;font-size:16px}
   <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:8px">
     <button class="btn btn-ghost" onclick="goTo('sc-lobby')">🏠 대기실</button>
     <button class="btn btn-primary" onclick="saveToSheets()">💾 Sheets 저장</button>
+    <button class="btn btn-teal" onclick="sendEmailReport()">📧 이메일 전송</button>
     <button class="btn btn-gold" onclick="downloadReport()">📥 결과지 다운로드</button>
   </div>
 </div>
@@ -508,8 +520,10 @@ const S = {
   ttsRate    : 0.95,
   ttsVoice   : '',
   prepTime   : 5,
+  recLimit   : 10,    // 답변 녹음 자동 종료 시간(초), 기본 10초
 
   voiceMode  : false,
+  email      : '',
   isRecording: false,
   recognition: null,
   recText    : '',
@@ -605,12 +619,14 @@ function autoSaveDraft() {
   try {
     const draft = {
       name     : document.getElementById('lb-name').value,
+      email    : document.getElementById('lb-email').value,
       category : document.getElementById('lb-cat').value,
       srcText  : document.getElementById('src-text').value,
       level    : document.getElementById('int-level').value,
       ttsRate  : document.getElementById('tts-rate').value,
       ttsVoice : document.getElementById('tts-voice').value,
       prepTime : document.getElementById('prep-time').value,
+      recLimit : document.getElementById('rec-limit').value,
       savedAt  : new Date().toISOString(),
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(draft));
@@ -644,8 +660,9 @@ function loadDraft() {
     if (!raw) return false;
     const d = JSON.parse(raw);
 
-    if (d.name)     document.getElementById('lb-name').value = d.name;
-    if (d.category) document.getElementById('lb-cat').value  = d.category;
+    if (d.name)     document.getElementById('lb-name').value  = d.name;
+    if (d.email)    document.getElementById('lb-email').value = d.email;
+    if (d.category) document.getElementById('lb-cat').value   = d.category;
     if (d.srcText)  document.getElementById('src-text').value = d.srcText;
     if (d.level)    document.getElementById('int-level').value = d.level;
     if (d.ttsRate)  {
@@ -655,6 +672,10 @@ function loadDraft() {
     if (d.prepTime) {
       document.getElementById('prep-time').value = d.prepTime;
       document.getElementById('prep-rv').textContent = d.prepTime + '초';
+    }
+    if (d.recLimit) {
+      document.getElementById('rec-limit').value = d.recLimit;
+      document.getElementById('rec-limit-rv').textContent = d.recLimit + '초';
     }
     // ttsVoice는 음성 목록 로드 후 적용 (initVoices에서 처리)
     S._pendingVoice = d.ttsVoice || '';
@@ -796,15 +817,17 @@ document.addEventListener('DOMContentLoaded', () => {
 // ══════════════════════════════════════
 async function startSession() {
   const src = document.getElementById('src-text').value.trim();
-  if (src.length < 10) { toast('📄 면접 소스 자료를 입력해 주세요.'); return; }
+  if (src.length < 50) { toast('📄 맞춤 질문을 위해 학생부/자소서 내용을 50자 이상 입력해 주세요.'); return; }
 
   S.name     = document.getElementById('lb-name').value.trim() || '수험생';
+  S.email    = (document.getElementById('lb-email').value || '').trim();
   S.category = document.getElementById('lb-cat').value;
   S.srcText  = src;
   S.level    = document.getElementById('int-level').value;
   S.ttsRate  = parseFloat(document.getElementById('tts-rate').value);
   S.ttsVoice = document.getElementById('tts-voice').value;
   S.prepTime = parseInt(document.getElementById('prep-time').value);
+  S.recLimit = parseInt(document.getElementById('rec-limit').value);
 
   S.history      = [];
   S.turns        = [];
@@ -874,7 +897,8 @@ ${S.srcText.slice(0, 3000)}
 - 학생부의 여러 활동 중 가장 구체적이고 깊이 탐구 가능한 1~2개를 선별해 집중하십시오. 모든 활동을 얕게 훑지 마십시오.
 - 면접 종료 시: "오늘 면접은 여기까지입니다. 수고하셨습니다."
 - 한국어로 진행.
-- 면접관 역할 유지, 불필요한 부연설명 금지, 정답을 알려주거나 평가 점수를 면접 중에 말하지 않음`;
+- 면접관 역할 유지, 불필요한 부연설명 금지, 정답을 알려주거나 평가 점수를 면접 중에 말하지 않음
+- 절대 금지: "학생부 내용이 없어서", "자료가 부족해서", "일반적인 질문을 드리겠습니다" 같은 표현 사용 금지. 제공된 소스자료를 반드시 바탕으로 질문을 구성할 것`;
 }
 
 // ══════════════════════════════════════
@@ -1096,15 +1120,35 @@ function startRec() {
   document.getElementById('voice-send-btn').disabled = true;
   document.getElementById('edit-rec-btn').disabled = true;
   setRecBtn('recording');
-  document.getElementById('rec-status').textContent = isResume
-    ? '이어서 듣고 있습니다… 말씀이 끝나면 버튼을 다시 눌러 주세요'
-    : '듣고 있습니다… 말씀이 끝나면 버튼을 다시 눌러 주세요';
   document.getElementById('voice-bars').classList.add('active');
   document.querySelectorAll('.vbar').forEach((b, i) => {
     b.classList.add('anim');
     b.style.animationDuration = (.35 + i * .04) + 's';
     b.style.animationDelay   = (i * .05) + 's';
   });
+
+  // 녹음 시간 카운트다운 — S.recLimit초 후 자동 종료 (이어서 녹음은 유지됨)
+  let remaining = S.recLimit || 10;
+  const statusEl = document.getElementById('rec-status');
+  statusEl.textContent = isResume
+    ? `이어서 듣는 중… (${remaining}초 후 자동 종료)`
+    : `듣고 있습니다… (${remaining}초 후 자동 종료)`;
+
+  // 기존 타이머 초기화
+  if (S._recTimer) clearInterval(S._recTimer);
+  S._recTimer = setInterval(() => {
+    if (!S.isRecording) { clearInterval(S._recTimer); return; }
+    remaining--;
+    if (remaining <= 0) {
+      clearInterval(S._recTimer);
+      statusEl.textContent = '⏱️ 녹음 시간 종료 — 전송하거나 버튼을 눌러 이어서 녹음하세요';
+      stopRec();
+    } else {
+      statusEl.textContent = S._currentSessionFinal || S._final
+        ? `이어서 듣는 중… (${remaining}초 후 자동 종료)`
+        : `듣고 있습니다… (${remaining}초 후 자동 종료)`;
+    }
+  }, 1000);
 }
 
 // 인식 세션 생성 및 시작 (조기 종료 시 재호출되어 이어붙이는 역할도 겸함)
@@ -1203,6 +1247,7 @@ function finishRecUI() {
 
 function stopRec() {
   if (!S.isRecording) return;
+  if (S._recTimer) { clearInterval(S._recTimer); S._recTimer = null; }
   S.isRecording  = false;
   S._recStopping = true;
   S._userStopped = true;   // 사용자가 직접 멈춘 것임을 표시 → 자동 재시작 방지
@@ -1229,6 +1274,7 @@ function stopRec() {
 }
 
 function resetRec() {
+  if (S._recTimer) { clearInterval(S._recTimer); S._recTimer = null; }
   if (S.recognition) {
     try { S.recognition.onend = null; S.recognition.onresult = null; S.recognition.onerror = null; S.recognition.abort(); } catch(e){}
     S.recognition = null;
@@ -1354,31 +1400,10 @@ function appendBubble(role, html, id, showTts) {
   const roleLabel = role === 'interviewer' ? '🤖 면접관' : '👤 ' + S.name;
   let inner = `<div class="bubble-role">${roleLabel}</div>${html}`;
 
-  if (showTts && role === 'interviewer') {
-    const ttsId = 'tts-' + Date.now();
-    inner += `<br><button class="tts-btn" id="${ttsId}" onclick="playBubbleTTS(this, ${JSON.stringify(html.replace(/<[^>]*>/g,''))})">▶ 듣기</button>`;
-  }
+  // 말풍선 내 "듣기" 버튼 없음 — 하단 "🔊 다시 듣기" 버튼으로 통일
   wrap.innerHTML = inner;
   win.appendChild(wrap);
   win.scrollTop = win.scrollHeight;
-}
-
-function playBubbleTTS(btn, text) {
-  if (btn.classList.contains('playing')) {
-    stopSpeak();
-    btn.classList.remove('playing');
-    btn.textContent = '▶ 듣기';
-    return;
-  }
-  document.querySelectorAll('.tts-btn.playing').forEach(b => {
-    b.classList.remove('playing'); b.textContent = '▶ 듣기';
-  });
-  btn.classList.add('playing');
-  btn.textContent = '⏹ 중지';
-  speak(text, () => {
-    btn.classList.remove('playing');
-    btn.textContent = '▶ 듣기';
-  });
 }
 
 function escHtml(s) {
@@ -1509,6 +1534,37 @@ async function saveToSheets() {
     hideLoading();
     if (res.ok) toast(`✅ ${res.data.saved}개 항목 저장 완료 (시트: ${res.data.sheetName})`);
     else toast('❌ ' + res.error);
+  } catch (e) {
+    hideLoading(); toast('❌ ' + e.message);
+  }
+}
+
+// ══════════════════════════════════════
+//  이메일 결과지 전송
+// ══════════════════════════════════════
+async function sendEmailReport() {
+  if (!S.turns.length) { toast('전송할 면접 기록이 없습니다.'); return; }
+
+  // 이메일 확인: S.email이 없으면 직접 입력 받기
+  let email = S.email;
+  if (!email) {
+    email = prompt('결과지를 전송할 이메일 주소를 입력해 주세요.');
+    if (!email || !email.trim()) { toast('이메일 주소가 없어 전송을 취소했습니다.'); return; }
+    email = email.trim();
+    S.email = email;
+  }
+
+  showLoading('이메일 전송 중…');
+  try {
+    const res = await gasCall('sendEmailReport', {
+      email   : email,
+      name    : S.name,
+      category: S.category,
+      turns   : S.turns,
+    });
+    hideLoading();
+    if (res.ok) toast(`📧 ${email} 으로 결과지를 전송했습니다!`);
+    else toast('❌ 전송 실패: ' + res.error);
   } catch (e) {
     hideLoading(); toast('❌ ' + e.message);
   }
